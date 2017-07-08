@@ -9,6 +9,12 @@
                                 :style :nested})
 
 (defn get-sass-options [project]
-  (if (:sass project)
-    (merge default-options (:sass project))
+  (if-let [options (:sass project)]
+    (merge
+      default-options
+      (let [directory (clojure.java.io/file (:src options))
+            directories (filter #(.isDirectory %) (file-seq directory))
+            load-paths (into #{(:src options)} (map #(.getPath %) directories))]
+        (merge options {:load_paths (vec load-paths)}))
+      options)
     (lmain/warn "No sass entry found in project definition.")))

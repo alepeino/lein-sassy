@@ -37,22 +37,24 @@
     (try (call-ruby-method container engine "render" String)
          (catch Exception e (print-message "Compilation failed:" e)))))
 
+(defn render-file
+  "Renders one file and returns the result."
+  [container runtime options file]
+  (let [syntax (get-file-syntax file options)
+        options (merge options {:syntax syntax})]
+    (render container runtime options (slurp file))))
+
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
   [container runtime options]
-  (let [directory (clojure.java.io/file (:src options))
-        files (filter compilable-sass-file? (file-seq directory))
-        directories (filter #(.isDirectory %) (file-seq directory))
-        load-paths (conj (map #(.getPath %) directories) (:src options))
-        options (merge options {:load_paths load-paths})]
+  (let [directory (io/file (:src options))
+        files (filter compilable-sass-file? (file-seq directory))]
     (doseq [file files]
-      (let [syntax (get-file-syntax file options)
-            options (merge options {:syntax syntax})
-            inpath (.getPath file)
+      (let [inpath (.getPath file)
             insubpath (s/replace-first (.replaceAll inpath "\\\\" "/") (.replaceAll (:src options) "\\\\" "/") "")
             outsubpath (filename-to-css insubpath)
             outpath (str (:dst options) outsubpath)
-            rendered (render container runtime options (slurp file))]
+            rendered (render-file container runtime options file)]
         (print-message inpath " to " outpath)
         (if-not (.exists (io/file (.getParent (io/file outpath)))) (io/make-parents outpath))
         (spit outpath rendered)))))
@@ -75,10 +77,10 @@
                 (unwatch-on-delete)
                 (run!))
         dw (->  (directory-watcher :recursive true)
-                (on-directory-create (fn [_1 _2 dir]
-                  (doseq [child (:files (:panoptic.data.core/children dir))]
-                    (watch-entity! fw (str (:path dir) "/" child) :created))))
-                 (on-file-create #(watch-entity! fw (:path %3) :created))
-                 (run!))]
+                (on-directory-create (fn [_ _ dir]
+                                       (doseq [child (:files (:panoptic.data.core/children dir))]
+                                         (watch-entity! fw (str (:path dir) "/" child) :created))))
+                (on-file-create #(watch-entity! fw (:path %3) :created))
+                (run!))]
     (watch-entity! dw (:src options) :created)
    @dw))
