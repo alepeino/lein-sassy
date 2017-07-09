@@ -7,8 +7,8 @@
   :scm {:name "git"
         :url "https://github.com/vladh/lein-sassy"}
 
-  :dependencies [[org.jruby/jruby-complete "1.7.16"]
-                 [com.cemerick/pomegranate "0.2.0"]
+  :dependencies [[org.jruby/jruby-complete "9.1.12.0"]
+                 [com.cemerick/pomegranate "0.3.1"]
                  [panoptic "0.2.1"]
                  [me.raynes/fs "1.4.6"]]
 
