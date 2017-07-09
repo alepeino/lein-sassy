@@ -10,8 +10,8 @@
                       :delete-output-dir true
                       :style :nested})
 
-(def project {:sass {:src "test/files-in"
-                     :dst "test/files-out"
+(def project {:sass {:src "test/files-in/sass"
+                     :dst "test/files-out/"
                      :syntax :sass
                      :style :expanded}})
 
@@ -28,13 +28,30 @@
       (is (= "No sass entry found in project definition.\n" (str *err*))))))
 
 (deftest render-file-test
-  (testing "compiles basic SASS"
+
+  (testing "compiles basic .sass"
     (let [options (get-sass-options project)
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/compiled/basic_sass.css")
+      (is (= (slurp "test/files-compiled/basic_sass.css")
              (render-file container runtime options (str (:src options) "/basic.sass"))))))
-  (testing "compiles basic SCSS"
-    (let [options (get-sass-options (assoc-in project [:sass :syntax] :scss))
+
+  (testing "compiles compressed .sass"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :style] :compressed)))
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/compiled/basic_scss.css")
+      (is (= (slurp "test/files-compiled/basic_sass.min.css")
+             (render-file container runtime options (str (:src options) "/basic.sass"))))))
+
+  (testing "compiles basic .scss"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :syntax] :scss)
+                                                (assoc-in [:sass :src] "test/files-in/scss")))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= (slurp "test/files-compiled/basic_scss.css")
+             (render-file container runtime options (str (:src options) "/basic.scss"))))))
+
+  (testing "compiles compressed .scss"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :syntax] :scss)
+                                                (assoc-in [:sass :src] "test/files-in/scss")
+                                                (assoc-in [:sass :style] :compressed)))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= (slurp "test/files-compiled/basic_scss.min.css")
              (render-file container runtime options (str (:src options) "/basic.scss")))))))
