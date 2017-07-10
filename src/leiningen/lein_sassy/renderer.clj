@@ -47,13 +47,10 @@
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
   [container runtime options]
-  (let [directory (io/file (:src options))
-        files (filter compilable-sass-file? (file-seq directory))]
-    (doseq [file files]
-      (let [inpath (.getPath file)
-            insubpath (s/replace-first (.replaceAll inpath "\\\\" "/") (.replaceAll (:src options) "\\\\" "/") "")
-            outsubpath (filename-to-css insubpath)
-            outpath (str (:dst options) outsubpath)
+  (let [directory (io/file (:src options))]
+    (doseq [file (filter compilable-sass-file? (file-seq directory))]
+      (let [inpath (.getCanonicalPath file)
+            outpath (dest-path (:src options) file (:dst options))
             rendered (render-file container runtime options file)]
         (print-message inpath " to " outpath)
         (if-not (.exists (io/file (.getParent (io/file outpath)))) (io/make-parents outpath))

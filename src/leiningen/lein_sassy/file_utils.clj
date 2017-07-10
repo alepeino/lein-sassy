@@ -1,91 +1,87 @@
 (ns leiningen.lein-sassy.file-utils
-  (:require [clojure.string :as s]
-            [me.raynes.fs :as fs]
-            [clojure.java.io :as io]))
+  (:require
+    [clojure.string :as s]
+    [me.raynes.fs :as fs])
+  (:import
+    (java.io File)))
 
-(def sass-extensions #{"sass" "scss"})
-(def css-extension "css")
-
-(defn file-extension
-  [file]
-  (some-> (.getPath file) fs/extension (subs 1)))
+(def sass-extensions #{".sass" ".scss"})
+(def css-extension ".css")
+(def map-extension ".map")
 
 (defn sass-file?
   "Returns whether or not a file ends in a sass extension."
   [file]
-  (contains? sass-extensions (file-extension file)))
+  (contains? sass-extensions (fs/extension file)))
 
 (defn sass-partial?
   "Returns whether or not a file is a partial (i.e. starts with an
   underscore)."
   [file]
-  (.startsWith (.getName file) "_"))
+  (s/starts-with? (fs/base-name file) "_"))
 
 (defn compilable-sass-file?
   "Returns whether or not a file is a sass file that can be compiled (i.e.
   not a partial)."
   [file]
-  (and (.isFile file)
+  (and (fs/file? file)
        (sass-file? file)
        (not (sass-partial? file))))
 
 (defn get-file-syntax
   "Gets the syntax given a file and options hash. If the hash defines the
-  syntax, return that. Otherwise, return the file's extension."
+  syntax, return that. Otherwise, return a keyword with the file's extension."
   [file options]
   (or (:syntax options)
-      (file-extension file)))
+      (-> file (fs/extension) (subs 1) (keyword))))
 
 (defn filename-to-css
   "Changes a file's extension to the css extension."
   [filename]
-  (let [basename (fs/base-name filename true)]
-    (str basename "." css-extension)))
+  (s/replace
+    filename
+    (->> sass-extensions (map #(str % "$")) (s/join "|") (re-pattern))
+    css-extension))
 
+(defn relative-path
+  "Returns relative path from file to parent-dir directory, or nil if the file is not relative to parent."
+  [file parent-dir]
+  (let [dir-path (str parent-dir File/separator)]
+    (when (s/starts-with? file dir-path)
+          (s/replace-first file dir-path ""))))
 
-(defn- dest-file
-  [src-file src-dir dest-dir]
-  (let [src-dir (.getCanonicalPath (io/file src-dir))
-        dest-dir (.getCanonicalPath (io/file dest-dir))
-        src-path (.getCanonicalPath src-file)
-        src-base-name (fs/base-name src-path)
-        rel-dest-path (filename-to-css src-base-name)]
-    (io/file (str dest-dir rel-dest-path))))
+(defn dest-path
+  "Gets destination path for a file to be compiled."
+  [src-dir src-file dest-dir]
+  (let [src-dir (fs/file src-dir)
+        src-file (fs/file src-file)
+        src-rel-path (or (relative-path src-file src-dir)
+                         (fs/normalized src-file))
+        dest-rel-path (filename-to-css src-rel-path)]
+    (str (fs/normalized (fs/file dest-dir dest-rel-path)))))
 
-(defn sass-css-mapping
-  [{:keys [src dst]}]
-  (let [sass-files (fs/find-files* src sass-file?)]
-    (reduce
-     (fn [sass-mapping sass-file]
-       (assoc sass-mapping sass-file (dest-file sass-file src dst)))
-     {} sass-files)))
-
-(defn dir-empty?
-  [dir]
-  (not-any? #(.isFile %)
-            (file-seq (io/file dir))))
+(defn map-path
+  "Gets relative path for a map file given a css file"
+  [css-file]
+  (str css-file map-extension))
 
 (defn delete-file!
   [file]
-  (when (.exists file)
+  (when (fs/exists? file)
     (println (str "Deleting: " file))
-    (io/delete-file file)))
+    (fs/delete file)))
 
-(defn delete-directory-recursively!
+(defn delete-dir!
+  "Deletes directory recursively"
   [base-dir]
-  (doseq [file (reverse (file-seq (io/file base-dir)))]
-    (delete-file! file)))
-
-(defn map-file
-  [f]
-  (str (.getPath dest-file) ".map"))
+  (when (and (fs/exists? base-dir) (fs/directory? base-dir))
+    (println (str "Deleting directory: " base-dir))
+    (fs/delete-dir base-dir)))
 
 (defn clean-all!
-  [{:keys [dst delete-output-dir] :as options}]
-  (doseq [[_ dest-file] (sass-css-mapping options)]
-    (delete-file! (io/file dest-file))
-    (delete-file! (io/file (map-file dest-file))))
-
-  (when (and delete-output-dir (fs/exists? dst) (dir-empty? dst))
-    (println (str "Destination folder " dst " is empty - Deleting it"))
-    (delete-directory-recursively! dst)))
+  [{:keys [dst delete-output-dir]}]
+  (if delete-output-dir
+    (delete-dir! dst)
+    (doseq [file (fs/find-files* dst (comp #{css-extension} fs/extension))]
+      (delete-file! file)
+      (delete-file! (map-path file)))))
