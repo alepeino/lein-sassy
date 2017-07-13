@@ -1,7 +1,7 @@
 (ns leiningen.lein-sassy.ruby
-  (:require [cemerick.pomegranate :refer [add-dependencies]])
+  (:require [cemerick.pomegranate :as pom])
   (:import [org.jruby.embed ScriptingContainer LocalContextScope LocalVariableBehavior]
-           [org.jruby RubyHash RubySymbol RubyArray]))
+           [org.jruby RubyHash RubySymbol RubyArray RubyString]))
 
 (defn make-container
   "Creates a Ruby scripting container, currently as a SINGLETON This ensures
@@ -13,6 +13,9 @@
 
 (defn make-runtime [container]
   (-> (.getProvider container) .getRuntime))
+
+(defn make-rb-string [runtime string]
+  (RubyString/newString runtime string))
 
 (defn make-rb-symbol [runtime string]
   (RubySymbol/newSymbol runtime (name string)))
@@ -26,43 +29,24 @@
   (let [rb-hash (RubyHash. runtime)]
     (doseq [[k v] clj-hash]
       (let [key (make-rb-symbol runtime k)
-            value (if (coll? v) (make-rb-array runtime v) (make-rb-symbol runtime v))]
+            value (cond
+                    (coll? v) (make-rb-array runtime v)
+                    (string? v) (make-rb-string runtime v)
+                    :else (make-rb-symbol runtime v))]
         (.put rb-hash key value)))
     rb-hash))
-
-(defn- download-gem-using-gemjars [gem-name gem-version]
-  (let [gem-id (symbol (str "org.rubygems/" gem-name))]
-    (try
-      (add-dependencies :coordinates [[gem-id gem-version]]
-                        :repositories (merge cemerick.pomegranate.aether/maven-central
-                                             {"gem-jars" "http://deux.gemjars.org"}))
-      (catch Exception e false))))
-
-(defn- download-gem-using-torquebox [gem-name gem-version]
-  (let [gem-id (symbol (str "rubygems/" gem-name))]
-    (try
-      (add-dependencies :coordinates [[gem-id gem-version :extension "gem"]]
-                        :repositories (merge cemerick.pomegranate.aether/maven-central
-                                             {"torquebox" "http://rubygems-proxy.torquebox.org/releases"}))
-      (catch Exception e
-        (println (.getMessage e))
-        false))))
-
-(defn install-gem [gem-name gem-version]
-  (if (or
-       (download-gem-using-gemjars gem-name gem-version)
-       (download-gem-using-torquebox gem-name gem-version))
-    true
-    false))
 
 (defn run-ruby [container scriptlet]
   (.runScriptlet container scriptlet))
 
 (defn call-ruby-method
   ([container object methodName returnType]
-    (.callMethod container object methodName returnType))
+   (.callMethod container object methodName returnType))
   ([container object methodName args returnType]
-    (.callMethod container object methodName args returnType)))
+   (.callMethod container object methodName args returnType)))
+
+(defn add-gemjars []
+  (pom/add-classpath "resources/ruby-gems.jar"))
 
 (defn require-gem [container gem-name]
-  (run-ruby container (str "require 'rubygems'; require '" (name gem-name) "';")))
+  (run-ruby container (str "require '" (name gem-name) "';")))

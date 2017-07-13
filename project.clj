@@ -7,14 +7,17 @@
   :scm {:name "git"
         :url "https://github.com/vladh/lein-sassy"}
 
-  :dependencies [[org.jruby/jruby-complete "9.1.12.0"]
-                 [com.cemerick/pomegranate "0.3.1"]
-                 [panoptic "0.2.1"]
-                 [me.raynes/fs "1.4.6"]]
+  :dependencies [[com.cemerick/pomegranate "0.3.1"]
+                 [me.raynes/fs "1.4.6"]
+                 [org.jruby/jruby-complete "9.1.12.0"]
+                 [panoptic "0.2.1"]]
 
-  :profiles {:dev {:dependencies [[org.rubygems/sass "3.2.14"]]
-                   :repositories [["gem-jars" "http://deux.gemjars.org"]]}
-             :example {:sass {:src "test/files-in"
-                              :dst "test/files-out"}}}
+  :profiles {:dev {:plugins [[lein-exec "0.3.6"]]}
+             :example {:sass {:src "test/files-in/sass"
+                              :dst "test/files-out"
+                              :sourcemap :auto
+                              :delete-output-dir false}}}
 
-  :eval-in-leiningen true)
+  :eval-in-leiningen true
+
+  :aliases {"gem-install" ["exec" "-p" "src/leiningen/lein_sassy/gem_install.clj"]})
