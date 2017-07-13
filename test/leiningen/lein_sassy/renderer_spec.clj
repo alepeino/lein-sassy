@@ -15,26 +15,26 @@
   (testing "compiles basic .sass"
     (let [options (get-sass-options project)
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/files-compiled/basic_sass.css")
-             (render-file container runtime options (str (:src options) "/basic.sass"))))))
+      (is (= [(slurp "test/files-compiled/basic_sass.css") nil]
+             (render-file container runtime options (io/file "test/files-in/sass/basic.sass") "")))))
 
   (testing "compiles compressed .sass"
     (let [options (get-sass-options (-> project (assoc-in [:sass :style] :compressed)))
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/files-compiled/basic_sass.min.css")
-             (render-file container runtime options (str (:src options) "/basic.sass"))))))
+      (is (= [(slurp "test/files-compiled/basic_sass.min.css") nil]
+             (render-file container runtime options (io/file "test/files-in/sass/basic.sass") "")))))
 
   (testing "compiles basic .scss"
     (let [options (get-sass-options (-> project (assoc-in [:sass :syntax] :scss)
                                                 (assoc-in [:sass :src] "test/files-in/scss")))
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/files-compiled/basic_scss.css")
-             (render-file container runtime options (str (:src options) "/basic.scss"))))))
+      (is (= [(slurp "test/files-compiled/basic_scss.css") nil]
+             (render-file container runtime options (io/file "test/files-in/scss/basic.scss") "")))))
 
   (testing "compiles compressed .scss"
     (let [options (get-sass-options (-> project (assoc-in [:sass :syntax] :scss)
                                                 (assoc-in [:sass :src] "test/files-in/scss")
                                                 (assoc-in [:sass :style] :compressed)))
           {:keys [container runtime]} (init-renderer options)]
-      (is (= (slurp "test/files-compiled/basic_scss.min.css")
-             (render-file container runtime options (str (:src options) "/basic.scss")))))))
+      (is (= [(slurp "test/files-compiled/basic_scss.min.css") nil]
+             (render-file container runtime options (io/file "test/files-in/scss/basic.scss") ""))))))

@@ -1,23 +1,23 @@
 (ns leiningen.lein-sassy.renderer
   (:refer-clojure :exclude [run!])
-  (:require [leiningen.lein-sassy.ruby :refer :all]
-            [leiningen.lein-sassy.file-utils :refer :all]
-            [clojure.string :as s]
-            [panoptic.core :refer :all]
-            [clojure.java.io :as io]))
-
-(def ^:private watch-poll-rate 50)
+  (:require
+    [clojure.java.io :as io]
+    [clojure.string :as s]
+    [leiningen.lein-sassy.file-utils :refer :all]
+    [leiningen.lein-sassy.ruby :refer :all]
+    [me.raynes.fs :as fs]
+    [panoptic.core :refer :all])
+  (:import
+    (java.util Base64 Date)))
 
 (defn- print-message [& args]
-  (println (apply str (into [] (concat [(str "[" (java.util.Date.) "] ")] args)))))
+  (println (apply str (into [] (concat [(str "[" (Date.) "] ")] args)))))
 
 (defn- init-gems
-  "Installs and loads the needed gems."
+  "Imports and loads the needed gems."
   [container options]
-  (do (install-gem (:gem-name options) (:gem-version options))
-      (require-gem container (str (:gem-name options) "/util"))
-      (require-gem container (str (:gem-name options) "/engine"))
-      (require-gem container (:gem-name options))))
+  (add-gemjars)
+  (require-gem container "sass"))
 
 (defn init-renderer
   "Creates a container and runtime for the renderer to use."
@@ -27,34 +27,51 @@
     (do (init-gems container options)
         {:container container :runtime runtime})))
 
-(defn render
-  "Renders one template and returns the result."
-  [container runtime options template]
-  (let [sass-options (make-rb-hash runtime (select-keys options [:syntax :style :load_paths]))
-        args (to-array [template sass-options])
-        sass (run-ruby container "Sass::Engine")
-        engine (call-ruby-method container sass "new" args Object)]
-    (try (call-ruby-method container engine "render" String)
-         (catch Exception e (print-message "Compilation failed:" e)))))
+(defn- render-with-sourcemap [container runtime engine sourcemap-options]
+  (let [[rendered sourcemap] (call-ruby-method container engine "render_with_sourcemap"
+                               (fs/base-name (map-path (:css_uri sourcemap-options))) Object)
+        map-options (make-rb-hash runtime sourcemap-options)
+        map-json (call-ruby-method container sourcemap "to_json" map-options String)]
+    [rendered map-json]))
+
+(defn- render [container runtime engine]
+  [(call-ruby-method container engine "render" String) nil])
 
 (defn render-file
-  "Renders one file and returns the result."
-  [container runtime options file]
+  "Renders one file and returns the rendered result and the sourcemap."
+  [container runtime options file outpath]
   (let [syntax (get-file-syntax file options)
-        options (merge options {:syntax syntax})]
-    (render container runtime options (slurp file))))
+        options (merge options {:syntax syntax :filename (str file)})
+        sass-options (make-rb-hash runtime (select-keys options [:syntax :style :load_paths :filename]))
+        args (to-array [(slurp file) sass-options])
+        sass (run-ruby container "Sass::Engine")
+        engine (call-ruby-method container sass "new" args Object)]
+    (try (if-let [type (-> options :sourcemap #{:auto :inline :file})]
+           (render-with-sourcemap container runtime engine {:type type :css_uri outpath})
+           (render container runtime engine))
+         (catch Exception e (print-message "Compilation failed:" e)))))
+
+(defn- spit-files! [rendered sourcemap outpath map-type]
+  (fs/mkdirs (fs/parent outpath))
+  (if-not sourcemap
+    (spit outpath rendered)
+    (let [map-outpath (map-path outpath)]
+      (if (= :inline map-type)
+        (spit outpath (s/replace rendered (str "sourceMappingURL=" (fs/base-name (map-path outpath)))
+                                          (str "sourceMappingURL=data:application/json;base64,"
+                                               (.encodeToString (Base64/getEncoder) (.getBytes sourcemap)))))
+        (do (spit outpath rendered)
+            (spit map-outpath sourcemap))))))
 
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
   [container runtime options]
-  (let [directory (io/file (:src options))]
-    (doseq [file (filter compilable-sass-file? (file-seq directory))]
-      (let [inpath (.getCanonicalPath file)
-            outpath (dest-path (:src options) file (:dst options))
-            rendered (render-file container runtime options file)]
-        (print-message inpath " to " outpath)
-        (if-not (.exists (io/file (.getParent (io/file outpath)))) (io/make-parents outpath))
-        (spit outpath rendered)))))
+  (doseq [file (fs/find-files* (:src options) compilable-sass-file?)]
+    (let [inpath (fs/normalized file)
+          outpath (dest-path (:src options) file (:dst options))
+          [rendered sourcemap] (render-file container runtime options file outpath)]
+      (print-message inpath " to " outpath)
+      (spit-files! rendered sourcemap outpath (:sourcemap options)))))
 
 (defn- file-change-handler
   "Prints the file that was changed then renders all templates."
