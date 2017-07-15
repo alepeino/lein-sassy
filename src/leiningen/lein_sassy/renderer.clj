@@ -28,11 +28,16 @@
         {:container container :runtime runtime})))
 
 (defn- render-with-sourcemap [container runtime engine sourcemap-options]
-  (let [[rendered sourcemap] (call-ruby-method container engine "render_with_sourcemap"
-                               (fs/base-name (map-path (:css_uri sourcemap-options))) Object)
-        map-options (make-rb-hash runtime sourcemap-options)
-        map-json (call-ruby-method container sourcemap "to_json" map-options String)]
-    [rendered map-json]))
+  (let [map-uri (fs/base-name (:sourcemap_path sourcemap-options))
+        [rendered sourcemap] (call-ruby-method container engine "render_with_sourcemap" map-uri Object)
+        json-options (make-rb-hash runtime (merge sourcemap-options {:type :auto})) ;; override :auto here to force relative path
+        map-json (call-ruby-method container sourcemap "to_json" json-options String)]
+    (if (= :inline (:type sourcemap-options))
+      [(s/replace rendered (str "sourceMappingURL=" map-uri)
+                           (str "sourceMappingURL=data:application/json;base64,"
+                             (.encodeToString (Base64/getEncoder) (.getBytes map-json))))
+       nil]
+      [rendered map-json])))
 
 (defn- render [container runtime engine]
   [(call-ruby-method container engine "render" String) nil])
@@ -46,22 +51,17 @@
         args (to-array [(slurp file) sass-options])
         sass (run-ruby container "Sass::Engine")
         engine (call-ruby-method container sass "new" args Object)]
-    (try (if-let [type (-> options :sourcemap #{:auto :inline :file})]
-           (render-with-sourcemap container runtime engine {:type type :css_uri outpath})
+    (try (if-let [type (-> options :sourcemap #{:auto :inline})]
+           (let [map-options {:type type :css_path outpath :sourcemap_path (map-path outpath)}]
+             (render-with-sourcemap container runtime engine map-options))
            (render container runtime engine))
          (catch Exception e (print-message "Compilation failed:" e)))))
 
 (defn- spit-files! [rendered sourcemap outpath map-type]
   (fs/mkdirs (fs/parent outpath))
-  (if-not sourcemap
-    (spit outpath rendered)
-    (let [map-outpath (map-path outpath)]
-      (if (= :inline map-type)
-        (spit outpath (s/replace rendered (str "sourceMappingURL=" (fs/base-name (map-path outpath)))
-                                          (str "sourceMappingURL=data:application/json;base64,"
-                                               (.encodeToString (Base64/getEncoder) (.getBytes sourcemap)))))
-        (do (spit outpath rendered)
-            (spit map-outpath sourcemap))))))
+  (spit outpath rendered)
+  (when (and sourcemap (not (= :inline map-type)))
+    (spit (map-path outpath) sourcemap)))
 
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
@@ -69,7 +69,9 @@
   (doseq [file (fs/find-files* (:src options) compilable-sass-file?)]
     (let [inpath (fs/normalized file)
           outpath (dest-path (:src options) file (:dst options))
-          [rendered sourcemap] (render-file container runtime options file outpath)]
+          rel-file (relative-path file fs/*cwd*)
+          rel-outpath (relative-path outpath fs/*cwd*)
+          [rendered sourcemap] (render-file container runtime options rel-file rel-outpath)]
       (print-message inpath " to " outpath)
       (spit-files! rendered sourcemap outpath (:sourcemap options)))))
 

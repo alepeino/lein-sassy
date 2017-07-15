@@ -37,4 +37,22 @@
                                                 (assoc-in [:sass :style] :compressed)))
           {:keys [container runtime]} (init-renderer options)]
       (is (= [(slurp "test/files-compiled/basic_scss.min.css") nil]
-             (render-file container runtime options (io/file "test/files-in/scss/basic.scss") ""))))))
+             (render-file container runtime options (io/file "test/files-in/scss/basic.scss") "")))))
+
+  (testing "sourcemap in file"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :sourcemap] :auto)))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= [(slurp "test/files-compiled/sourcemap-file.css")
+              (slurp "test/files-compiled/sourcemap-file.css.map")]
+             (render-file container runtime options
+                          (io/file "test/files-in/sass/basic.sass")
+                          "test/files-compiled/sourcemap-file.css")))))
+
+  (testing "sourcemap inline"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :sourcemap] :inline)))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= [(slurp "test/files-compiled/sourcemap-inline.css")
+              nil]
+             (render-file container runtime options
+                          (io/file "test/files-in/sass/basic.sass")
+                          "test/files-compiled/sourcemap-inline.css"))))))
