@@ -1,12 +1,11 @@
 (ns leiningen.lein-sassy.renderer
-  (:refer-clojure :exclude [run!])
   (:require
     [clojure.java.io :as io]
     [clojure.string :as s]
+    [hawk.core :as hawk]
     [leiningen.lein-sassy.file-utils :refer :all]
     [leiningen.lein-sassy.ruby :refer :all]
-    [me.raynes.fs :as fs]
-    [panoptic.core :refer :all])
+    [me.raynes.fs :as fs])
   (:import
     (java.util Base64 Date)))
 
@@ -77,26 +76,23 @@
 
 (defn- file-change-handler
   "Prints the file that was changed then renders all templates."
-  [container runtime options _1 _2 file]
-  (do (print-message "File " (:path file) " changed.")
-      (render-all! container runtime options)))
+  [container runtime options file]
+  (when (sass-file? file)
+    (print-message "File " file " changed.")
+    (render-all! container runtime options)))
 
 (defn watch-and-render!
   "Watches the directory specified by (:src options) and calls a handler that
   renders all templates."
   [container runtime options]
   (print-message "Watching " (:src options) " for changes.")
+  (print-message "Type \"exit\" to stop.")
   (let [handler (partial file-change-handler container runtime options)
-        fw (->  (file-watcher)
-                (on-file-create handler)
-                (on-file-modify handler)
-                (unwatch-on-delete)
-                (run!))
-        dw (->  (directory-watcher :recursive true)
-                (on-directory-create (fn [_ _ dir]
-                                       (doseq [child (:files (:panoptic.data.core/children dir))]
-                                         (watch-entity! fw (str (:path dir) "/" child) :created))))
-                (on-file-create #(watch-entity! fw (:path %3) :created))
-                (run!))]
-    (watch-entity! dw (:src options) :created)
-   @dw))
+        watcher (hawk/watch! [{:paths [(:src options)]
+                               :handler (fn [_ {:keys [kind file]}]
+                                          (when (= :modify kind)
+                                            (handler (str file))))}])]
+    (loop []
+      (if (= (read-line) "exit")
+        (hawk/stop! watcher)
+        (recur)))))

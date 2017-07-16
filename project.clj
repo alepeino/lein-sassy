@@ -8,9 +8,9 @@
         :url "https://github.com/vladh/lein-sassy"}
 
   :dependencies [[com.cemerick/pomegranate "0.3.1"]
+                 [hawk "0.2.11"]
                  [me.raynes/fs "1.4.6"]
-                 [org.jruby/jruby-complete "9.1.12.0"]
-                 [panoptic "0.2.1"]]
+                 [org.jruby/jruby-complete "9.1.12.0"]]
 
   :profiles {:dev {:plugins [[lein-exec "0.3.6"]]}
              :example {:sass {:src "test/files-in/integration"
