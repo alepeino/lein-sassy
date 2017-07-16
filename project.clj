@@ -13,7 +13,7 @@
                  [panoptic "0.2.1"]]
 
   :profiles {:dev {:plugins [[lein-exec "0.3.6"]]}
-             :example {:sass {:src "test/files-in/sass"
+             :example {:sass {:src "test/files-in/integration"
                               :dst "test/files-out"
                               :sourcemap :auto
                               :delete-output-dir false}}}

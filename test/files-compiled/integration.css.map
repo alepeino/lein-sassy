@@ -1,0 +1,7 @@
+{
+"version": 3,
+"mappings": "AAAA,IAAI;EACF,UAAU,EAAE,SAAS;;ACCvB,GAAI;EACF,UAAU,EAAE,MAAM;EAClB,KAAK,EAAE,WAAW;;AAGpB,aAAc;EACZ,OAAO,EAAE,IAAI",
+"sources": ["../files-in/integration/_imported.sass","../files-in/integration/integration.scss"],
+"names": [],
+"file": "integration.css"
+}
