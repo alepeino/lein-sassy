@@ -16,6 +16,7 @@
              :example {:sass {:src "test/files-in/integration"
                               :dst "test/files-out"
                               :sourcemap :auto
+                              :plugins [:autoprefixer]
                               :delete-output-dir false}}}
 
   :eval-in-leiningen true

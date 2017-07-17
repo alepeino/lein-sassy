@@ -30,9 +30,11 @@
     (doseq [[k v] clj-hash]
       (let [key (make-rb-symbol runtime k)
             value (cond
+                    (map? v) (make-rb-hash runtime v)
                     (coll? v) (make-rb-array runtime v)
                     (string? v) (make-rb-string runtime v)
-                    :else (make-rb-symbol runtime v))]
+                    (keyword? v) (make-rb-symbol runtime v)
+                    :else v)]
         (.put rb-hash key value)))
     rb-hash))
 

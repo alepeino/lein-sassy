@@ -55,4 +55,33 @@
               nil]
              (render-file container runtime options
                           (io/file "test/files-in/sass/basic.sass")
-                          "test/files-compiled/sourcemap-inline.css"))))))
+                          "test/files-compiled/sourcemap-inline.css")))))
+
+  (testing "autoprefixer plugin, no sourcemap"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :plugins] [:autoprefixer])))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= [(slurp "test/files-compiled/autoprefixer-no-sourcemap.css")
+              nil]
+             (render-file container runtime options
+                          (io/file "test/files-in/sass/autoprefixer.sass")
+                          "test/files-compiled/autoprefixer-no-sourcemap.css")))))
+
+  (testing "autoprefixer plugin, sourcemap in separate file"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :plugins] [:autoprefixer])
+                                                (assoc-in [:sass :sourcemap] :auto)))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= [(slurp "test/files-compiled/autoprefixer-sourcemap-auto.css")
+              (slurp "test/files-compiled/autoprefixer-sourcemap-auto.css.map")]
+             (render-file container runtime options
+                          (io/file "test/files-in/sass/autoprefixer.sass")
+                          "test/files-compiled/autoprefixer-sourcemap-auto.css")))))
+
+  (testing "autoprefixer plugin, sourcemap inline"
+    (let [options (get-sass-options (-> project (assoc-in [:sass :plugins] [:autoprefixer])
+                                                (assoc-in [:sass :sourcemap] :inline)))
+          {:keys [container runtime]} (init-renderer options)]
+      (is (= [(slurp "test/files-compiled/autoprefixer-sourcemap-inline.css")
+              nil]
+             (render-file container runtime options
+                          (io/file "test/files-in/sass/autoprefixer.sass")
+                          "test/files-compiled/autoprefixer-sourcemap-inline.css"))))))

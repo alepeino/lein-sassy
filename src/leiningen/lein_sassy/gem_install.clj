@@ -6,7 +6,7 @@
 (def gems-dir "resources/gemjars")
 
 (defn gem-install [& gem]
-  (apply println "Installing gem '" gem "'")
+  (apply println "Installing gem" gem)
   (.run (org.jruby.Main.)
     (into-array java.lang.String
       (concat ["-S" "gem" "install"
@@ -20,4 +20,5 @@
 
 (fs/delete-dir gems-dir)
 (gem-install "sass" "-v" "3.4.25")
+(gem-install "autoprefixer-rails")
 (build-jar)

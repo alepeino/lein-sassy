@@ -1,0 +1,32 @@
+body {
+  background: red;
+}
+
+div {
+  background: tomato;
+  color: pink;
+  -webkit-transform: rotate(-1deg);
+          transform: rotate(-1deg);
+}
+
+*:-webkit-full-screen a {
+  display: -webkit-box;
+  display: flex;
+}
+
+*:-moz-full-screen a {
+  display: flex;
+}
+
+*:-ms-fullscreen a {
+  display: -ms-flexbox;
+  display: flex;
+}
+
+*:fullscreen a {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+/*# sourceMappingURL=autoprefixer-sourcemap-auto.css.map */

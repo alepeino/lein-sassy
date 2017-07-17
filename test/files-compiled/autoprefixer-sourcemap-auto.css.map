@@ -1,0 +1,7 @@
+{
+"version": 3,
+"mappings": "AAAA,IAAI;EACF,UAAU,EAAE,GAAG;;;ACCjB,GAAG;EACD,UAAU,EAAE,MAAM;EAClB,KAAK,EAAE,IAAI;EACX,SAAS,EAAE,aAAa;;;AAE1B,cAAc;EACZ,OAAO,EAAE,IAAI",
+"sources": ["../files-in/sass/_imported.sass","../files-in/sass/autoprefixer.sass"],
+"names": [],
+"file": "autoprefixer-sourcemap-auto.css"
+}

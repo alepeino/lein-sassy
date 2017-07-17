@@ -16,7 +16,8 @@
   "Imports and loads the needed gems."
   [container options]
   (add-gemjars)
-  (require-gem container "sass"))
+  (require-gem container "sass")
+  (require-gem container "autoprefixer-rails"))
 
 (defn init-renderer
   "Creates a container and runtime for the renderer to use."
@@ -26,20 +27,40 @@
     (do (init-gems container options)
         {:container container :runtime runtime})))
 
-(defn- render-with-sourcemap [container runtime engine sourcemap-options]
+(defn- apply-autoprefixer [container runtime options outpath [css map]]
+  (let [sourcemap-type (-> options :sourcemap #{:auto :inline})
+        autoprefixer-options {:from (fs/base-name outpath)
+                              :map (if-not sourcemap-type false {:inline false})}
+        args (to-array [css (make-rb-hash runtime autoprefixer-options)])
+        autoprefixer (run-ruby container "AutoprefixerRails")
+        prefixed (call-ruby-method container autoprefixer "process" args Object)]
+    [(str prefixed) map]))
+
+(defn- plugins-pipe [container runtime options outpath rendered]
+  (reduce
+    #(case %2
+       :autoprefixer (apply-autoprefixer container runtime options outpath %1)
+       %1)
+    rendered
+    (:plugins options)))
+
+(defn- render-with-sourcemap [container runtime engine options outpath sourcemap-options]
   (let [map-uri (fs/base-name (:sourcemap_path sourcemap-options))
-        [rendered sourcemap] (call-ruby-method container engine "render_with_sourcemap" map-uri Object)
+        rendered (call-ruby-method container engine "render_with_sourcemap" map-uri Object)
+        [css sourcemap] (plugins-pipe container runtime options outpath rendered)
         json-options (make-rb-hash runtime (merge sourcemap-options {:type :auto})) ;; override :auto here to force relative path
         map-json (call-ruby-method container sourcemap "to_json" json-options String)]
     (if (= :inline (:type sourcemap-options))
-      [(s/replace rendered (str "sourceMappingURL=" map-uri)
-                           (str "sourceMappingURL=data:application/json;base64,"
-                             (.encodeToString (Base64/getEncoder) (.getBytes map-json))))
+      [(s/replace css (str "sourceMappingURL=" map-uri)
+                      (str "sourceMappingURL=data:application/json;base64,"
+                        (.encodeToString (Base64/getEncoder) (.getBytes map-json))))
        nil]
-      [rendered map-json])))
+      [css map-json])))
 
-(defn- render [container runtime engine]
-  [(call-ruby-method container engine "render" String) nil])
+(defn- render [container runtime engine options outpath]
+  (plugins-pipe container runtime options outpath
+    [(call-ruby-method container engine "render" String)
+     nil]))
 
 (defn render-file
   "Renders one file and returns the rendered result and the sourcemap."
@@ -52,13 +73,13 @@
         engine (call-ruby-method container sass "new" args Object)]
     (try (if-let [type (-> options :sourcemap #{:auto :inline})]
            (let [map-options {:type type :css_path outpath :sourcemap_path (map-path outpath)}]
-             (render-with-sourcemap container runtime engine map-options))
-           (render container runtime engine))
-         (catch Exception e (print-message "Compilation failed:" e)))))
+             (render-with-sourcemap container runtime engine options outpath map-options))
+           (render container runtime engine options outpath))
+      (catch Exception e (print-message "Compilation failed:" e)))))
 
-(defn- spit-files! [rendered sourcemap outpath map-type]
+(defn- spit-files! [css sourcemap outpath map-type]
   (fs/mkdirs (fs/parent outpath))
-  (spit outpath rendered)
+  (spit outpath css)
   (when (and sourcemap (not (= :inline map-type)))
     (spit (map-path outpath) sourcemap)))
 
@@ -70,9 +91,9 @@
           outpath (dest-path (:src options) file (:dst options))
           rel-file (relative-path file fs/*cwd*)
           rel-outpath (relative-path outpath fs/*cwd*)
-          [rendered sourcemap] (render-file container runtime options rel-file rel-outpath)]
+          [css sourcemap] (render-file container runtime options rel-file rel-outpath)]
       (print-message inpath " to " outpath)
-      (spit-files! rendered sourcemap outpath (:sourcemap options)))))
+      (spit-files! css sourcemap outpath (:sourcemap options)))))
 
 (defn- file-change-handler
   "Prints the file that was changed then renders all templates."
