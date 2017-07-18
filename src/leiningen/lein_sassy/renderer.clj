@@ -1,84 +1,66 @@
 (ns leiningen.lein-sassy.renderer
-  (:refer-clojure :exclude [run!])
-  (:require [leiningen.lein-sassy.ruby :refer :all]
-            [leiningen.lein-sassy.file-utils :refer :all]
-            [clojure.string :as s]
-            [panoptic.core :refer :all]
-            [clojure.java.io :as io]))
-
-(def ^:private watch-poll-rate 50)
+  (:require
+    [clojure.string :as s]
+    [hawk.core :as hawk]
+    [leiningen.core.main :as lmain]
+    [leiningen.lein-sassy.file-utils :refer :all]
+    [me.raynes.fs :as fs]
+    [zweikopf.core :as z]))
 
 (defn- print-message [& args]
-  (println (apply str (into [] (concat [(str "[" (java.util.Date.) "] ")] args)))))
-
-(defn- init-gems
-  "Installs and loads the needed gems."
-  [container options]
-  (do (install-gem (:gem-name options) (:gem-version options))
-      (require-gem container (str (:gem-name options) "/util"))
-      (require-gem container (str (:gem-name options) "/engine"))
-      (require-gem container (:gem-name options))))
-
-(defn init-renderer
-  "Creates a container and runtime for the renderer to use."
-  [options]
-  (let [container (make-container)
-        runtime (make-runtime container)]
-    (do (init-gems container options)
-        {:container container :runtime runtime})))
+  (lmain/info (apply str (.format (java.text.SimpleDateFormat. "[yyyy-MM-dd HH:mm:ss] ") (java.util.Date.)) args)))
 
 (defn render
   "Renders one template and returns the result."
-  [container runtime options template]
-  (let [sass-options (make-rb-hash runtime (select-keys options [:syntax :style :load_paths]))
-        args (to-array [template sass-options])
-        sass (run-ruby container "Sass::Engine")
-        engine (call-ruby-method container sass "new" args Object)]
-    (try (call-ruby-method container engine "render" String)
-         (catch Exception e (print-message "Compilation failed:" e)))))
+  [options template]
+  (try
+    (let [sass-options (z/rubyize (select-keys  options [:syntax :style :load_paths :cache]))
+          engine (z/call-ruby "Sass::Engine" "new" template sass-options)]
+      (z/call-ruby engine "render"))
+    (catch Exception e (print-message "Compilation failed:" e))))
 
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
-  [container runtime options]
-  (let [directory (clojure.java.io/file (:src options))
-        files (filter compilable-sass-file? (file-seq directory))
-        directories (filter #(.isDirectory %) (file-seq directory))
-        load-paths (conj (map #(.getPath %) directories) (:src options))
-        options (merge options {:load_paths load-paths})]
-    (doseq [file files]
-      (let [syntax (get-file-syntax file options)
-            options (merge options {:syntax syntax})
-            inpath (.getPath file)
-            insubpath (s/replace-first (.replaceAll inpath "\\\\" "/") (.replaceAll (:src options) "\\\\" "/") "")
-            outsubpath (filename-to-css insubpath)
-            outpath (str (:dst options) outsubpath)
-            rendered (render container runtime options (slurp file))]
-        (print-message inpath " to " outpath)
-        (if-not (.exists (io/file (.getParent (io/file outpath)))) (io/make-parents outpath))
-        (spit outpath rendered)))))
+  [options]
+  (doseq [file (fs/find-files* (:src options) compilable-sass-file?)]
+    (let [syntax (get-file-syntax file options)
+          options (merge options {:syntax syntax})
+          inpath (str file)
+          insubpath (s/replace-first (str (fs/normalized inpath))
+                                     (str (fs/normalized (:src options)) java.io.File/separator)
+                                     "")
+          outsubpath (filename-to-css insubpath)
+          outpath (fs/file (:dst options) outsubpath)
+          rendered (render options (slurp file))]
+      (print-message inpath " to " outpath)
+      (fs/mkdirs (fs/parent outpath))
+      (spit outpath rendered))))
 
 (defn- file-change-handler
   "Prints the file that was changed then renders all templates."
-  [container runtime options _1 _2 file]
-  (do (print-message "File " (:path file) " changed.")
-      (render-all! container runtime options)))
+  [options file]
+  (when (sass-file? file)
+    (print-message "File " file " changed.")
+    (render-all! options)))
 
 (defn watch-and-render!
   "Watches the directory specified by (:src options) and calls a handler that
   renders all templates."
-  [container runtime options]
+  [options]
   (print-message "Watching " (:src options) " for changes.")
-  (let [handler (partial file-change-handler container runtime options)
-        fw (->  (file-watcher)
-                (on-file-create handler)
-                (on-file-modify handler)
-                (unwatch-on-delete)
-                (run!))
-        dw (->  (directory-watcher :recursive true)
-                (on-directory-create (fn [_1 _2 dir]
-                  (doseq [child (:files (:panoptic.data.core/children dir))]
-                    (watch-entity! fw (str (:path dir) "/" child) :created))))
-                 (on-file-create #(watch-entity! fw (:path %3) :created))
-                 (run!))]
-    (watch-entity! dw (:src options) :created)
-   @dw))
+  (print-message "Type \"exit\" to stop.")
+  (let [watcher (hawk/watch! [{:paths [(:src options)]
+                               :handler (fn [_ {:keys [kind file]}]
+                                          (when (= :modify kind)
+                                            (file-change-handler options file)))}])]
+    (while (not= (read-line) "exit"))
+    (hawk/stop! watcher)))
+
+(defn clean-all!
+  [{:keys [dst delete-output-dir]}]
+  (lmain/info "Deleting files generated by lein-sass in" dst)
+  (if delete-output-dir
+    (delete-dir! dst)
+    (doseq [file (fs/find-files* dst (comp #{".css"} fs/extension))]
+      (delete-file! file)
+      (delete-file! (map-file file)))))
