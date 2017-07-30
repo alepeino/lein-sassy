@@ -1,25 +1,32 @@
 (ns leiningen.lein-sassy.renderer-spec
-  (:require [clojure.test :refer :all]
-            [leiningen.lein-sassy.options :refer :all]
-            [leiningen.lein-sassy.renderer :refer :all]))
+  (:require
+    [clojure.test :refer :all]
+    [leiningen.lein-sassy.renderer :refer :all]
+    [leiningen.sass :refer [get-sass-options init-ruby-context]]))
 
-(def project {:sass {:src "test/files-in"
-                     :dst "test/files-out"
-                     :syntax :sass
-                     :style :compressed}})
-(def options (get-sass-options project))
+(def options
+  (get-sass-options {:sass {:src "test/files-in"
+                            :dst "test/files-out"}}))
 
-(def renderer-data (init-renderer options))
-(def container (:container renderer-data))
-(def runtime (:runtime renderer-data))
+(use-fixtures :each
+              (fn [t]
+                (init-ruby-context options)
+                (t)))
 
-(deftest renderer
-  (testing "Renderer"
-    (testing "compiles basic SASS"
-      (is (= "body{background:red}\n"
-             (render container runtime options "body\n  background: red"))))))
+(deftest render-file-test
 
-; (deftest renderer-watch
-;   (testing "Renderer (watching)"
-;     (testing "watches directory for changes"
-;       (watch-and-render! container runtime options))))
+  (testing "compiles basic .sass"
+    (is (= (slurp "test/files-compiled/basic.css")
+           (render-file "test/files-in/basic.sass" options))))
+
+  (testing "compiles file with imports"
+    (is (= (slurp "test/files-compiled/imports.css")
+           (render-file "test/files-in/imports.sass" options))))
+
+  (testing "compiles .scss"
+    (is (= (slurp "test/files-compiled/other-syntax.css")
+           (render-file "test/files-in/other-syntax.scss" options))))
+
+  (testing "compressed style"
+    (is (= (slurp "test/files-compiled/basic.min.css")
+           (render-file "test/files-in/basic.sass" (assoc options :style :compressed))))))

@@ -20,7 +20,10 @@
       options)
     (lmain/warn "No sass entry found in project definition.")))
 
-(defn- init-ruby-context [options]
+(defn init-ruby-context
+  "Initializes the Ruby scripting container as a singleton, and requires
+  the necessary gems."
+  [options]
   (z/init-ruby-context)
   (z/set-gem-path "target/rubygems-provided")
   (z/ruby-require "sass"))

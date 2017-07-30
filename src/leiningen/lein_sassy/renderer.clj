@@ -10,24 +10,28 @@
 (defn- print-message [& args]
   (lmain/info (apply str (.format (java.text.SimpleDateFormat. "[yyyy-MM-dd HH:mm:ss] ") (java.util.Date.)) args)))
 
-(defn render
-  "Renders one template and returns the result."
-  [options template]
+(defn- render
+  [template options]
   (try
-    (let [sass-options (z/rubyize (select-keys  options [:syntax :style :load_paths :cache]))
+    (let [sass-options (z/rubyize (select-keys options [:syntax :style :load_paths :cache]))
           engine (z/call-ruby "Sass::Engine" "new" template sass-options)]
       (z/call-ruby engine "render"))
     (catch Exception e (print-message "Compilation failed:" e))))
+
+(defn render-file
+  "Renders one file and returns the result."
+  [file options]
+  (let [syntax (get-file-syntax file options)
+        options (merge options {:syntax syntax})]
+    (render (slurp file) options)))
 
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
   [options]
   (doseq [file (fs/find-files* (:src options) compilable-sass-file?)]
-    (let [syntax (get-file-syntax file options)
-          options (merge options {:syntax syntax})
-          inpath (str file)
+    (let [inpath (str file)
           outpath (dest-path inpath (:src options) (:dst options))
-          rendered (render options (slurp file))]
+          rendered (render-file file options)]
       (print-message inpath " to " outpath)
       (fs/mkdirs (fs/parent outpath))
       (spit outpath rendered))))
