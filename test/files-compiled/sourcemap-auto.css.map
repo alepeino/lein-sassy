@@ -1,0 +1,7 @@
+{
+"version": 3,
+"mappings": "AAAA,IAAI;EACF,UAAU,EAAE,GAAG;;ACCjB,IAAI;EACF,KAAK,EAAE,KAAK",
+"sources": ["../files-in/_imported.sass","../files-in/sourcemap-auto.sass"],
+"names": [],
+"file": "sourcemap-auto.css"
+}

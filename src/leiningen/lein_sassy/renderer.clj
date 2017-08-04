@@ -5,25 +5,52 @@
     [leiningen.core.main :as lmain]
     [leiningen.lein-sassy.file-utils :refer :all]
     [me.raynes.fs :as fs]
-    [zweikopf.core :as z]))
+    [zweikopf.core :as z])
+  (:import
+    (java.text SimpleDateFormat)
+    (java.util Base64 Date)))
+
 
 (defn- print-message [& args]
-  (lmain/info (apply str (.format (java.text.SimpleDateFormat. "[yyyy-MM-dd HH:mm:ss] ") (java.util.Date.)) args)))
+  (lmain/info (apply str (.format (SimpleDateFormat. "[yyyy-MM-dd HH:mm:ss] ") (Date.)) args)))
+
+(defn- render-with-sourcemap
+  [file options]
+  (let [outpath (dest-path (str file) (:src options) (:dst options))
+        map-type (or (#{:inline} (:sourcemap options)) :auto)
+        map-options {:type :auto :css_path outpath :sourcemap_path (map-file outpath)}
+        map-uri (fs/base-name (:sourcemap_path map-options))
+        engine (z/call-ruby "Sass::Engine" "new" (slurp file) (z/rubyize options))
+        [css sourcemap] (z/call-ruby engine "render_with_sourcemap" map-uri)
+        map-json (z/call-ruby sourcemap "to_json" (z/rubyize map-options))]
+    (case map-type
+      :inline [(s/replace css (str "sourceMappingURL=" map-uri)
+                              (str "sourceMappingURL=data:application/json;base64,"
+                                (.encodeToString (Base64/getEncoder) (.getBytes map-json))))
+               nil]
+      :auto [css (str map-json \newline)])))
 
 (defn- render
-  [template options]
-  (try
-    (let [sass-options (z/rubyize (select-keys options [:syntax :style :load_paths :cache]))
-          engine (z/call-ruby "Sass::Engine" "new" template sass-options)]
-      (z/call-ruby engine "render"))
-    (catch Exception e (print-message "Compilation failed:" e))))
+  [file options]
+  (let [engine (z/call-ruby "Sass::Engine" "new" (slurp file) (z/rubyize options))
+        css (z/call-ruby engine "render")]
+    [css nil]))
 
 (defn render-file
-  "Renders one file and returns the result."
+  "Renders one file and returns the rendered result and the sourcemap."
   [file options]
   (let [syntax (get-file-syntax file options)
-        options (merge options {:syntax syntax})]
-    (render (slurp file) options)))
+        options (assoc options :syntax syntax :filename (str file))]
+    (try (if (:sourcemap options)
+           (render-with-sourcemap file options)
+           (render file options))
+      (catch Exception e (print-message "Compilation failed:" e)))))
+
+(defn- spit-files! [css sourcemap outpath map-type]
+  (fs/mkdirs (fs/parent outpath))
+  (spit outpath css)
+  (when (and sourcemap (not (= :inline map-type)))
+    (spit (map-file outpath) sourcemap)))
 
 (defn render-all!
   "Renders all templates in the directory specified by (:src options)."
@@ -31,10 +58,9 @@
   (doseq [file (fs/find-files* (:src options) compilable-sass-file?)]
     (let [inpath (str file)
           outpath (dest-path inpath (:src options) (:dst options))
-          rendered (render-file file options)]
+          [css sourcemap] (render-file file options)]
       (print-message inpath " to " outpath)
-      (fs/mkdirs (fs/parent outpath))
-      (spit outpath rendered))))
+      (spit-files! css sourcemap outpath (:sourcemap options)))))
 
 (defn- file-change-handler
   "Prints the file that was changed then renders all templates."
