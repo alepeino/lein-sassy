@@ -26,6 +26,8 @@
 
              :example {:sass {:src "test/files-in"
                               :dst "test/files-out"
+                              :sourcemap :auto
+                              :style :expanded
                               :delete-output-dir false
                               :cache false}}}
 
